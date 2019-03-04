@@ -1,6 +1,6 @@
-============================
-Install VPMEM Tempest Plugin
-============================
+=================================================
+How to Install VPMEM Tempest Plugin and Run tests
+=================================================
 
 #. You first need to install Tempest.
 
@@ -17,3 +17,12 @@ Install VPMEM Tempest Plugin
     | vpmem-tempest-plugin | vpmem_tempest_plugin.plugin:VPMEMTempestPlugin |
     +----------------------+------------------------------------------------+
 
+#. List tempest tests in this plugin::
+
+    $ tempest run --list-tests |grep vpmem_tempest_plugin
+    vpmem_tempest_plugin.tests.scenario.test_server_basic_ops.TestServerBasicOps.test_server_basic_ops...
+    ...
+
+#. Run tempest tests of this plugin::
+
+    $ tempest run --regex vpmem_tempest_plugin*
