@@ -41,13 +41,14 @@ LOG = log.getLogger(__name__)
 class ScenarioTest(tempest.test.BaseTestCase):
     """Base class for scenario tests. Uses tempest own clients. """
 
-    credentials = ['primary']
+    credentials = ['primary', 'admin']
 
     @classmethod
     def setup_clients(cls):
         super(ScenarioTest, cls).setup_clients()
         # Clients (in alphabetical order)
         cls.flavors_client = cls.os_primary.flavors_client
+        cls.admin_flavors_client = cls.os_admin.flavors_client
         cls.compute_floating_ips_client = (
             cls.os_primary.compute_floating_ips_client)
         if CONF.service_available.glance:
@@ -115,6 +116,22 @@ class ScenarioTest(tempest.test.BaseTestCase):
         body = client.create_keypair(name=name)
         self.addCleanup(client.delete_keypair, name)
         return body['keypair']
+
+    def create_flavor(self, ram, vcpus, disk, name=None,
+                      client=None, extra_spec=None, **kwargs):
+        if not client:
+            client = self.admin_flavors_client
+        flavor_id = data_utils.rand_int_id(start=1000)
+        name = data_utils.rand_name(self.__class__.__name__)
+        flavor = client.create_flavor(
+                ram=ram, vcpus=vcpus, disk=disk, name=name,
+                id=flavor_id, is_public='True', **kwargs)['flavor']
+        if extra_spec:
+            client.set_flavor_extra_spec(flavor['id'],
+                                         **extra_spec)
+        self.addCleanup(client.wait_for_resource_deletion, flavor['id'])
+        self.addCleanup(client.delete_flavor, flavor['id'])
+        return flavor
 
     def create_server(self, name=None, image_id=None, flavor=None,
                       validatable=False, wait_until='ACTIVE',
