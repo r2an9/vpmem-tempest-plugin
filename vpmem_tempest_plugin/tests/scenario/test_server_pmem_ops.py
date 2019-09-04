@@ -67,7 +67,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
                 server=self.instance)
 
     def verify_pmem(self, instance, expect_pmem_num):
-        conn = libvirt.open('qemu+ssh://root@localhost/system')
+        conn = libvirt.open('qemu:///system')
         pmem_num = 0
         for domain in conn.listAllDomains():
             if domain.UUIDString() != instance['id']:
