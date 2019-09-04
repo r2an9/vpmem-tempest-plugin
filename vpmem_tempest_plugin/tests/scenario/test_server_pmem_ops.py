@@ -87,7 +87,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
     @decorators.attr(type='smoke')
     @utils.services('compute', 'network')
     def test_server_with_pmem(self):
-        flavor = self.create_flavor(2048, 4, 10, name='test_flavor',
+        flavor = self.create_flavor(1024, 1, 10, name='test_flavor',
                                     extra_spec={'hw:pmem': '4GB'})
         keypair = self.create_keypair()
         security_group = self._create_security_group()
@@ -103,9 +103,9 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
     @decorators.attr(type='smoke')
     @utils.services('compute', 'network')
     def test_server_resize_with_pmem(self):
-        flavor_1 = self.create_flavor(2048, 4, 10,
+        flavor_1 = self.create_flavor(1024, 1, 10,
                                       extra_spec={'hw:pmem': '4GB'})
-        flavor_2 = self.create_flavor(2048, 4, 10,
+        flavor_2 = self.create_flavor(1024, 1, 10,
                                       extra_spec={'hw:pmem': '4GB,16GB'})
         keypair = self.create_keypair()
         security_group = self._create_security_group()
@@ -120,7 +120,5 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         waiters.wait_for_server_status(self.servers_client,
                                        self.instance['id'],
                                        'VERIFY_RESIZE')
-        #from remote_pdb import RemotePdb
-        #RemotePdb('127.0.0.1', 4444).set_trace()
         self.servers_client.confirm_resize_server(self.instance['id'])
         self.verify_pmem(self.instance, 2)
