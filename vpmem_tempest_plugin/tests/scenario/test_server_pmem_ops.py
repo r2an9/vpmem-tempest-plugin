@@ -47,7 +47,10 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
     def setUp(self):
         super(TestServerWithPMEMOps, self).setUp()
         self.run_ssh = CONF.validation.run_validation
-        self.ssh_user = CONF.validation.image_ssh_user
+        # use custom image for pmem testcases,
+        # need to configure CONF.scenario
+        self.ssh_user = 'ubuntu'
+        self.image = self.glance_image_create()
 
     def verify_ssh(self, keypair):
         if self.run_ssh:
@@ -95,7 +98,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
             key_name=keypair['name'],
             security_groups=[{'name': security_group['name']}],
             flavor=flavor['id'],
-            image_id=CONF.compute.image_ref)
+            image_id=self.image)
         self.verify_ssh(keypair)
         self.verify_pmem(self.instance, 1)
 
@@ -113,7 +116,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
             key_name=keypair['name'],
             security_groups=[{'name': security_group['name']}],
             flavor=flavor_1['id'],
-            image_id=CONF.compute.image_ref)
+            image_id=self.image)
         self.verify_pmem(self.instance, 1)
         self.servers_client.resize_server(self.instance['id'],
                                           flavor_ref=flavor_2['id'])
