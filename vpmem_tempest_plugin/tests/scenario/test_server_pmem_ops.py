@@ -41,7 +41,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
      * Add simple permissive rules to the security group
      * Launch an instance with pmem
      * Perform ssh to instance
-     * Verify pmem device in domain xml
+     * Verify pmem device in domain xml and by listing the files in vm
      * Terminate the instance
     """
 
@@ -71,6 +71,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
                 server=self.instance)
 
     def verify_pmem(self, instance, expect_pmem_num):
+        # check pmem devices num in domain xml
         conn = libvirt.open('qemu:///system')
         pmem_num = 0
         for domain in conn.listAllDomains():
@@ -91,6 +92,10 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         # if delete this line, ssh connect can't success for a long~~ time
         # after resize, so weird!!!
         self.ssh_client.exec_command('sudo apt update')
+        # check pmem devices num by listing the pmem device files
+        pmem_num = self.ssh_client.exec_command('ls /dev/pmem* | wc -l')
+        if int(pmem_num) != expect_pmem_num:
+            raise Exception('NVDIMM device num is not as expected.')
 
     @decorators.idempotent_id('d3b73849-4e71-44a9-b526-a72e35021b0c')
     @decorators.attr(type='smoke')
