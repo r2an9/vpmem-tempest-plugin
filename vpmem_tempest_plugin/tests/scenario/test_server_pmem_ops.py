@@ -15,6 +15,7 @@
 
 import json
 import libvirt
+import time
 
 from lxml import etree
 from tempest.common import utils
@@ -86,6 +87,11 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         if pmem_num != expect_pmem_num:
             raise Exception('NVDIMM device num is not as expected.')
 
+        # what is this for??? make entropy increased???
+        # if delete this line, ssh connect can't success for a long~~ time
+        # after resize, so weird!!!
+        self.ssh_client.exec_command('sudo apt update')
+
     @decorators.idempotent_id('d3b73849-4e71-44a9-b526-a72e35021b0c')
     @decorators.attr(type='smoke')
     @utils.services('compute', 'network')
@@ -112,16 +118,28 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
                                       extra_spec={'hw:pmem': '4GB,16GB'})
         keypair = self.create_keypair()
         security_group = self._create_security_group()
+        # create instance
         self.instance = self.create_server(
             key_name=keypair['name'],
             security_groups=[{'name': security_group['name']}],
             flavor=flavor_1['id'],
             image_id=self.image)
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'ACTIVE')
+        time.sleep(5)  # sleep 5s, wait for the guest ready to be connected
+        self.verify_ssh(keypair)
         self.verify_pmem(self.instance, 1)
+        # resize instance
         self.servers_client.resize_server(self.instance['id'],
                                           flavor_ref=flavor_2['id'])
         waiters.wait_for_server_status(self.servers_client,
                                        self.instance['id'],
                                        'VERIFY_RESIZE')
+        # confirm resize
         self.servers_client.confirm_resize_server(self.instance['id'])
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'ACTIVE')
+        time.sleep(10)  # sleep 10s, wait for the guest ready to be connected
         self.verify_pmem(self.instance, 2)
