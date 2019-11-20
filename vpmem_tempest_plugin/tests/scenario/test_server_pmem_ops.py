@@ -71,27 +71,6 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
                 server=self.instance)
 
     def verify_pmem(self, instance, expect_pmem_num):
-        # check pmem devices num in domain xml
-        conn = libvirt.open('qemu:///system')
-        pmem_num = 0
-        for domain in conn.listAllDomains():
-            if domain.UUIDString() != instance['id']:
-                continue
-            xmldoc = etree.fromstring(domain.XMLDesc())
-            for c in xmldoc.getchildren():
-                if c.tag == 'devices':
-                    for d in c.getchildren():
-                        if d.tag == 'memory' and d.get('model') == 'nvdimm':
-                            pmem_num += 1
-            break
-        conn.close()
-        if pmem_num != expect_pmem_num:
-            raise Exception('NVDIMM device num is not as expected.')
-
-        # what is this for??? make entropy increased???
-        # if delete this line, ssh connect can't success for a long~~ time
-        # after resize, so weird!!!
-        self.ssh_client.exec_command('sudo apt update')
         # check pmem devices num by listing the pmem device files
         pmem_num = self.ssh_client.exec_command('ls /dev/pmem* | wc -l')
         if int(pmem_num) != expect_pmem_num:
@@ -132,7 +111,6 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         waiters.wait_for_server_status(self.servers_client,
                                        self.instance['id'],
                                        'ACTIVE')
-        time.sleep(5)  # sleep 5s, wait for the guest ready to be connected
         self.verify_ssh(keypair)
         self.verify_pmem(self.instance, 1)
         # resize instance
@@ -146,5 +124,4 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         waiters.wait_for_server_status(self.servers_client,
                                        self.instance['id'],
                                        'ACTIVE')
-        time.sleep(10)  # sleep 10s, wait for the guest ready to be connected
         self.verify_pmem(self.instance, 2)
