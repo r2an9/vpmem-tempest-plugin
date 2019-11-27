@@ -70,6 +70,7 @@ class ScenarioTest(tempest.test.BaseTestCase):
         cls.compute_security_group_rules_client = (
             cls.os_primary.compute_security_group_rules_client)
         cls.servers_client = cls.os_primary.servers_client
+        cls.admin_servers_client = cls.os_admin.servers_client
         cls.interface_client = cls.os_primary.interfaces_client
         # Neutron network client
         cls.networks_client = cls.os_primary.networks_client

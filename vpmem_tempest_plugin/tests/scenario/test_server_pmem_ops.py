@@ -42,7 +42,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
      * Launch an instance with pmem
      * Perform ssh to instance
      * Verify pmem device in domain xml and by listing the files in vm
-     * Terminate the instance
+     * create, shelve/unshelve, resize, cold migration, live migration
     """
 
     def setUp(self):
@@ -52,6 +52,45 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         # need to configure CONF.scenario
         self.ssh_user = 'ubuntu'
         self.image = self.glance_image_create()
+        self.flavor_1 = self.create_flavor(1024, 1, 10,
+                                           extra_spec={'hw:pmem': '4GB'})
+        self.flavor_2 = self.create_flavor(1024, 1, 10,
+                                           extra_spec={'hw:pmem': '4GB,16GB'})
+        self.keypair = self.create_keypair()
+        self.security_group = self._create_security_group()
+
+    def _get_bdm(self, source_id, source_type, delete_on_termination=False):
+        bd_map_v2 = [{
+            'uuid': source_id,
+            'source_type': source_type,
+            'destination_type': 'volume',
+            'boot_index': 0,
+            'delete_on_termination': delete_on_termination}]
+        return {'block_device_mapping_v2': bd_map_v2}
+
+    def _boot_instance_from_resource(self, source_id,
+                                     source_type,
+                                     flavor=None,
+                                     keypair=None,
+                                     security_group=None,
+                                     delete_on_termination=False,
+                                     name=None):
+        create_kwargs = dict()
+        if keypair:
+            create_kwargs['key_name'] = keypair['name']
+        if security_group:
+            create_kwargs['security_groups'] = [
+                {'name': security_group['name']}]
+        create_kwargs.update(self._get_bdm(
+            source_id,
+            source_type,
+            delete_on_termination=delete_on_termination))
+        if name:
+            create_kwargs['name'] = name
+        if flavor:
+            create_kwargs['flavor'] = flavor['id']
+
+        return self.create_server(image_id='', **create_kwargs)
 
     def verify_ssh(self, keypair):
         if self.run_ssh:
@@ -80,42 +119,53 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
     @decorators.attr(type='smoke')
     @utils.services('compute', 'network')
     def test_server_with_pmem(self):
-        flavor = self.create_flavor(1024, 1, 10, name='test_flavor',
-                                    extra_spec={'hw:pmem': '4GB'})
-        keypair = self.create_keypair()
-        security_group = self._create_security_group()
         self.instance = self.create_server(
-            key_name=keypair['name'],
-            security_groups=[{'name': security_group['name']}],
-            flavor=flavor['id'],
+            key_name=self.keypair['name'],
+            security_groups=[{'name': self.security_group['name']}],
+            flavor=self.flavor_1['id'],
             image_id=self.image)
-        self.verify_ssh(keypair)
+        self.verify_ssh(self.keypair)
+        self.verify_pmem(self.instance, 1)
+
+    @decorators.idempotent_id('cb8a99e6-0f6f-11ea-b479-3cfdfecaee70')
+    @decorators.attr(type='smoke')
+    @utils.services('compute', 'network')
+    def test_server_shelve_unshelve_with_pmem(self):
+        self.instance = self.create_server(
+            key_name=self.keypair['name'],
+            security_groups=[{'name': self.security_group['name']}],
+            flavor=self.flavor_1['id'],
+            image_id=self.image)
+        self.verify_ssh(self.keypair)
+        self.verify_pmem(self.instance, 1)
+        self.servers_client.shelve_server(self.instance['id'])
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'SHELVED_OFFLOADED')
+        self.servers_client.unshelve_server(self.instance['id'])
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'ACTIVE')
         self.verify_pmem(self.instance, 1)
 
     @decorators.idempotent_id('df50f6ef-425d-4780-9413-54cece5ba8f9')
     @decorators.attr(type='smoke')
     @utils.services('compute', 'network')
     def test_server_resize_with_pmem(self):
-        flavor_1 = self.create_flavor(1024, 1, 10,
-                                      extra_spec={'hw:pmem': '4GB'})
-        flavor_2 = self.create_flavor(1024, 1, 10,
-                                      extra_spec={'hw:pmem': '4GB,16GB'})
-        keypair = self.create_keypair()
-        security_group = self._create_security_group()
         # create instance
         self.instance = self.create_server(
-            key_name=keypair['name'],
-            security_groups=[{'name': security_group['name']}],
-            flavor=flavor_1['id'],
+            key_name=self.keypair['name'],
+            security_groups=[{'name': self.security_group['name']}],
+            flavor=self.flavor_1['id'],
             image_id=self.image)
         waiters.wait_for_server_status(self.servers_client,
                                        self.instance['id'],
                                        'ACTIVE')
-        self.verify_ssh(keypair)
+        self.verify_ssh(self.keypair)
         self.verify_pmem(self.instance, 1)
         # resize instance
         self.servers_client.resize_server(self.instance['id'],
-                                          flavor_ref=flavor_2['id'])
+                                          flavor_ref=self.flavor_2['id'])
         waiters.wait_for_server_status(self.servers_client,
                                        self.instance['id'],
                                        'VERIFY_RESIZE')
@@ -125,3 +175,59 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
                                        self.instance['id'],
                                        'ACTIVE')
         self.verify_pmem(self.instance, 2)
+
+    @decorators.idempotent_id('92f6806e-100e-11ea-b479-3cfdfecaee70')
+    @decorators.attr(type='smoke')
+    @utils.services('compute', 'network')
+    def test_server_cold_migration_with_pmem(self):
+        # create instance
+        self.instance = self.create_server(
+            key_name=self.keypair['name'],
+            security_groups=[{'name': self.security_group['name']}],
+            flavor=self.flavor_1['id'],
+            image_id=self.image)
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'ACTIVE')
+        self.verify_ssh(self.keypair)
+        self.verify_pmem(self.instance, 1)
+        # cold migration
+        self.admin_servers_client.migrate_server(self.instance['id'])
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'VERIFY_RESIZE')
+        self.verify_pmem(self.instance, 1)
+
+    @decorators.idempotent_id('b69002ca-100e-11ea-b479-3cfdfecaee70')
+    @decorators.attr(type='smoke')
+    @utils.services('compute', 'network')
+    def test_server_live_migration_with_pmem(self):
+        # create volume
+        volume = self.create_volume(size=20, imageRef=self.image)
+        self.volumes_client.set_bootable_volume(volume['id'], bootable=True)
+        # create instance
+	self.instance = self._boot_instance_from_resource(
+            flavor=self.flavor_1,
+            keypair=self.keypair,
+            security_group=self.security_group,
+            source_id=volume['id'],
+            source_type='volume',
+            delete_on_termination=False)
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'ACTIVE')
+        self.verify_ssh(self.keypair)
+        self.verify_pmem(self.instance, 1)
+        # live migration with volume backed
+        source_host = self.get_host_for_server(self.instance['id'])
+        self.admin_servers_client.live_migrate_server(
+                self.instance['id'],
+                host=None,
+                block_migration=False,
+                disk_over_commit=False)
+        waiters.wait_for_server_status(self.servers_client,
+                                       self.instance['id'],
+                                       'ACTIVE')
+        destination_host = self.get_host_for_server(self.instance['id'])
+        self.verify_pmem(self.instance, 1)
+        self.assertNotEqual(source_host, destination_host)
