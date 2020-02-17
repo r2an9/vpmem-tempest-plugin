@@ -206,7 +206,7 @@ class TestServerWithPMEMOps(manager.ScenarioTest):
         volume = self.create_volume(size=20, imageRef=self.image)
         self.volumes_client.set_bootable_volume(volume['id'], bootable=True)
         # create instance
-	self.instance = self._boot_instance_from_resource(
+        self.instance = self._boot_instance_from_resource(
             flavor=self.flavor_1,
             keypair=self.keypair,
             security_group=self.security_group,
